@@ -1,3 +1,4 @@
+import PIL.Image
 import streamlit as st
 import os
 import subprocess
@@ -8,30 +9,34 @@ from io import BytesIO
 import base64
 from PIL import Image
 from rembg import remove
+from datetime import datetime
 
 st.set_page_config(layout="wide", page_title= "Creative Image Gen")
 row1_1, row1_2, row1_3 = st.columns(3)
 row2_1, row2_2, row2_3 = st.columns(3)
 row3_1, row3_2, row3_3 = st.columns(3)
 
-def merge_images(image_path, background_path, output_path, x_val, y_val):
-    img = remove(image_path)
-    newimg = background_path
-    newimg.paste(img, (x_val, y_val), img)
-    newimg.save(output_path)
-    return newimg
+st.session_state["value"] = 0
+def sum_state():
+    if st.session_state["value"] == 0:
+        print(st.session_state["value"])
+        os.remove("files_created")
+        os.remove("files_with_logo")
+        st.session_state["value"] += 1
+        print(st.session_state["value"])
+        print("if print")
+    else:
+        print(st.session_state["value"])
+        print("else")
 
-def add_background():
-    bg = st.file_uploader("escoge un fondo")
-    if bg is not None:
-        # To read file as bytes:
-        bytes_data = bg.getvalue()
-        image_bg = Image.open(BytesIO(bytes_data))
-        return image_bg
+def merge_images(image_path, logo_path, output_path, x_val, y_val):
+    img = PIL.Image.open(image_path)
+    logo = logo_path
+    img.paste(logo, (x_val, y_val), logo)
+    img.save(output_path)
+    return img
 
-
-
-def add_logo(logo_path, width, height):
+def add_logo(logo_path, width=None, height=None):
     st.markdown("""
     <style>
         [data-testid=stSidebar] {
@@ -40,8 +45,8 @@ def add_logo(logo_path, width, height):
     </style>
     """, unsafe_allow_html=True)
     logo = Image.open(logo_path)
-    modified_logo = logo.resize((width, height))
-    return modified_logo
+    #modified_logo = logo.resize((width, height))
+    return logo
 
 
 def getinfo(url):
@@ -51,11 +56,12 @@ def getinfo(url):
     return response
 
 
-def txt2img(url, prompt, negative_prompt):
+def txt2img(url, prompt, negative_prompt=None):
     post_req = url + '/sdapi/v1/txt2img'
-    data = f'''{
-        "prompt": {str(prompt)},
-        "negative_prompt": {str(negative_prompt)},
+
+    data = """{
+        "prompt": "your_prompt" ,
+        "negative_prompt": "your_negative_prompt",
         "seed": -1,
         "subseed": -1,
         "subseed_strength": 0,
@@ -79,11 +85,11 @@ def txt2img(url, prompt, negative_prompt):
         "s_tmax": 0,
         "s_tmin": 0,
         "s_noise": 0,
-        "override_settings": "",
+        "override_settings": {},
         "override_settings_restore_afterwards": true,
         "refiner_switch_at": 0,
         "disable_extra_networks": false,
-        "comments": "",
+        "comments": {},
         "enable_hr": false,
         "firstphase_width": 0,
         "firstphase_height": 0,
@@ -96,9 +102,12 @@ def txt2img(url, prompt, negative_prompt):
         "sampler_index": "Euler",
         "script_args": [],
         "send_images": true,
-        "save_images": false,
-        "alwayson_scripts": ""}
-'''
+        "save_images": true,
+        "alwayson_scripts": {}
+        }"""
+    data = data.replace("your_prompt", prompt)
+    data = data.replace("your_negative_prompt", negative_prompt)
+
     output = subprocess.run(
         ['curl', '-X', 'POST', post_req, '-H', 'accept: application/json', '-H', 'Content-Type: application/json', '-d',
          data],
@@ -109,6 +118,19 @@ def txt2img(url, prompt, negative_prompt):
     image_genai = Image.open(BytesIO(base64.decodebytes(bytes(url_image, "utf-8"))))
     return image_genai
 
+
+def gen_image(prompt, negative_prompt, image_count):
+    image_list = []
+    while len(image_list) <= image_count:
+        st.session_state.img_base = []
+        st.write("Describiste: ", prompt)
+        image_genai = txt2img("https://o6aiiiu68yi86n-3001.proxy.runpod.net", prompt=prompt,
+                              negative_prompt=negative_prompt)
+        name = str(datetime.now().strftime("%d-%m-%Y-%H%M%S")) + ".png"
+        image_genai.save("files_created/" + name)
+        image_list.append(image_genai)
+        st.write("EXITOSO")
+        return image_genai
 
 def main():
     if 'img_base' not in st.session_state:
@@ -126,45 +148,64 @@ def main():
         st.image("nttdata.png")
 
     with row2_1:
+        prompts = ["couple_hiking", "old_guy_alone", "old_lady_coffee","grandparents_grandchildren"]
         prompt_selector = st.selectbox(
-            "Que te gustaria generar?", ("prompt1", "prompt2"),
+            "Que te gustaria generar?", prompts,
             placeholder="Selecciona...",
         )
-        if prompt_selector == "prompt1":
-            prompt = "old couple, black and white, infrared, b&W, composition, profesional, golden ratio, real light, at the beach, smiling, happy, retired, real, 4k, dune, movie frame,"
-            negative_prompt = "ugly, abhorrent hands, ugly eyes, disformed, fake light, sad"
-        else:
-            pass
+        if prompt_selector == "couple_hiking":
+            prompt = "close up,couple ,latin american, old, nature, hike, happy, smiling, retired, sunset, real, 4k, best quality, contemplative,real, real quality, real person, real skin, real shadows,  no hats, landscape,"
+            negative_prompt="ugly, abhorrent hands, ugly eyes, disformed, fake light, sad, ugly arms, bad quality, blurred,bad photo, bad fingers, abnormal, nsfw, sexy, hats, sombreros, headwear, hat, sombrero, caps"
+
+        elif prompt_selector=="old_guy_alone":
+            prompt="old guy, at the beach, sitting, happy, smiling, retired, sunset, real, 4k, best quality, contemplative,"
+            negative_prompt="ugly, abhorrent hands, ugly eyes, disformed, fake light, sad, ugly arms, bad quality, blurred, bad photo"
+
+        elif prompt_selector=="old_lady_coffee":
+            prompt = "old lady, coffee shop, sitting, happy, smiling, retired, sunset, real, 4k, best quality, contemplative, real, real quality, real person, real skin, real shadows"
+            negative_prompt= "ugly, abhorrent hands, ugly eyes, disformed, fake light, sad, ugly arms, bad quality, blurred, bad photo, bad fingers, abnormal, nsfw, sexy"
+        elif prompt_selector=="grandparents_grandchildren":
+            prompt= "grandparents and grandchildren,latin american, nature, happy, smiling, sunset, real, 4k, best quality, contemplative, real, real quality, real person, real skin, real shadows,  no hats, landscape, having fun"
+            negative_prompt= "ugly, abhorrent hands, ugly eyes, disformed, fake light, sad, ugly arms, bad quality, blurred, bad photo, bad fingers, abnormal, nsfw, sexy, hats, sombreros, headwear, hat, sombrero, caps"
+        pass
+
+        image_count = st.number_input(label="Numero de imagenes a generar", value="min", step=1,
+                                           min_value=1)
         gen = st.button("genera imagen base")
         if gen:
-            st.session_state.img_base = []
-            st.write("Describiste: ", prompt)
-            image_genai= txt2img("https://o6aiiiu68yi86n-3001.proxy.runpod.net", prompt, negative_prompt)
-            st.write("EXITOSO")
-            st.session_state['img_base'] = image_genai
+            st.session_state['img_base'] = gen_image(prompt, negative_prompt, image_count)
+            # sum_state()
 
         if 'img_base' in st.session_state:
             with row3_1:
                 st.image(st.session_state.img_base)
 
     with row2_2:
-        st.session_state["img_bg"] = add_background()
-        if 'img_bg' in st.session_state:
+        st.session_state["img_logo"] = add_logo("profuturo_logo.png")
+        if 'img_logo' in st.session_state:
             with row3_2:
-                st.image(st.session_state.img_bg)
+                st.image(st.session_state.img_logo)
 
     with row2_3:
-        x_val = st.slider("x", 0, 520, 0)
-        y_val = st.slider("y", 0, 520, 0)
+        x_val = st.slider("x", 0, 1024, 0)
+        y_val = st.slider("y", 0, 1024, 0)
+        #mass_production = st.button("mass production")
         result = st.button("Submit values")
         if result:
             with row3_3:
-                new_img = merge_images(st.session_state['img_base'], st.session_state.img_bg, "new1.png",
-                                   x_val, y_val)
-                st.image(new_img)
-                st.session_state.img_history = st.session_state.img_history.append(new_img)
-                st.download_button("Descargar", data= "new1.png", file_name="mamalucha_gen.png")
-            st.write("Resultado: ")
+                for file in os.listdir("files_created"):
+                    new_img = merge_images(image_path= ("files_created/"+file),
+                                           logo_path= st.session_state.img_logo,output_path= ("files_with_logo/w_logo_"+ file),
+                                       x_val= x_val, y_val= y_val)
+                    st.image(new_img)
+                    #st.session_state.img_history = st.session_state.img_history.append(new_img)
+                    st.write("Resultado: ")
+
+                shutil.make_archive("images_with_logo", 'zip', "files_with_logo")
+                with open("images_with_logo.zip", "rb") as file:
+                    st.download_button("Descargar imagenes con logo",
+                                       data=file, file_name="images_with_logo.zip", key="images_W_logo1234")
+
 
 if __name__ == "__main__":
     main()
